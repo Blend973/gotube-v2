@@ -6,7 +6,7 @@ import (
 )
 
 func CheckDependencies() error {
-	required := []string{"yt-dlp", "fzf", "jq", "curl"}
+	required := []string{"yt-dlp", "fzf", "curl"}
 	missing := make([]string, 0)
 	for _, name := range required {
 		if !util.CommandExists(name) {

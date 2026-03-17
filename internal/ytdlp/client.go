@@ -1,6 +1,7 @@
 package ytdlp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,7 +55,7 @@ func (c *Client) Fetch(url string, extraArgs ...string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ParseResult(stdout)
+	return ParseResultBytes(stdout)
 }
 
 func (c *Client) FetchRelatedMix(currentVideoID string) (*Result, error) {
@@ -68,41 +69,43 @@ func (c *Client) FetchRelatedMix(currentVideoID string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ParseResult(string(out))
+	return ParseResultBytes(out)
 }
 
 func ParseResult(stdout string) (*Result, error) {
-	stdout = strings.TrimSpace(stdout)
-	if stdout == "" {
+	return ParseResultBytes([]byte(stdout))
+}
+
+func ParseResultBytes(stdout []byte) (*Result, error) {
+	stdout = bytes.TrimSpace(stdout)
+	if len(stdout) == 0 {
 		return nil, errors.New("empty yt-dlp output")
 	}
-
 	var r Result
-	if err := json.Unmarshal([]byte(stdout), &r); err == nil {
+	if err := json.Unmarshal(stdout, &r); err == nil {
 		return &r, nil
 	}
-	idx := strings.Index(stdout, "{")
-	if idx >= 0 {
-		if err := json.Unmarshal([]byte(stdout[idx:]), &r); err == nil {
+	if idx := bytes.IndexByte(stdout, '{'); idx >= 0 {
+		if err := json.Unmarshal(stdout[idx:], &r); err == nil {
 			return &r, nil
 		}
 	}
 	return nil, errors.New("failed to parse yt-dlp json")
 }
 
-func runMaybeWithGum(ytArgs ...string) (string, error) {
+func runMaybeWithGum(ytArgs ...string) ([]byte, error) {
 	if _, err := exec.LookPath("gum"); err == nil {
 		args := append([]string{"spin", "--show-output", "--", "yt-dlp"}, ytArgs...)
 		cmd := exec.Command("gum", args...)
 		out, err := cmd.Output()
 		if err == nil {
-			return string(out), nil
+			return out, nil
 		}
 	}
 	cmd := exec.Command("yt-dlp", ytArgs...)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(out), nil
+	return out, nil
 }

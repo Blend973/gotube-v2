@@ -64,6 +64,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error initializing app: %v\n", err)
 		os.Exit(1)
 	}
+	defer a.Close()
 
 	searchTerm := *searchShort
 	if searchTerm == "" {
@@ -81,6 +82,7 @@ func main() {
 			if sig == syscall.SIGINT && a.IsPlayerRunning() {
 				continue
 			}
+			a.Close()
 			util.ClearScreen()
 			os.Exit(0)
 		}

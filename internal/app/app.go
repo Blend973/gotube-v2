@@ -25,6 +25,7 @@ import (
 var ErrExit = errors.New("exit")
 
 var filterPattern = regexp.MustCompile(`^(:[a-z]+)\s+(.+)`)
+var selectionTrimPattern = regexp.MustCompile(`^[^0-9]*\s\s`)
 
 type App struct {
 	State         *config.State
@@ -38,6 +39,9 @@ func New(state *config.State) (*App, error) {
 		return nil, err
 	}
 	preview.CleanupCache(state.Paths)
+	if err := preview.EnsureUeberzugppDaemon(state.CLIName, state.Config); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: ueberzugpp daemon failed to start: %v\n", err)
+	}
 	return a, nil
 }
 
@@ -47,6 +51,10 @@ func (a *App) Run(initialAction string, searchTerm string) error {
 
 func (a *App) IsPlayerRunning() bool {
 	return a.playerRunning.Load()
+}
+
+func (a *App) Close() {
+	preview.StopUeberzugppDaemon()
 }
 
 func (a *App) mainMenu(initialAction string, searchTerm string) error {
@@ -105,6 +113,9 @@ func (a *App) editConfig() error {
 		return err
 	}
 	preview.CleanupCache(st.Paths)
+	if err := preview.EnsureUeberzugppDaemon(st.CLIName, st.Config); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: ueberzugpp daemon failed to start: %v\n", err)
+	}
 	return nil
 }
 
@@ -172,7 +183,7 @@ func (a *App) playlistExplorer(searchResults *ytdlp.Result, searchURL string) er
 
 		enablePreview := strings.EqualFold(a.State.Config["ENABLE_PREVIEW"], "true") && strings.EqualFold(a.State.Config["PREFERRED_SELECTOR"], "fzf")
 		if enablePreview && !downloadImages {
-			_ = preview.DownloadPreviewImages(searchResults, a.State.Paths, "")
+			_ = preview.DownloadPreviewImages(searchResults, a.State.Paths)
 			downloadImages = true
 		}
 
@@ -396,8 +407,7 @@ func normalizeSelection(sel string) string {
 	if sel == "" {
 		return ""
 	}
-	re := regexp.MustCompile(`^[^0-9]*\s\s`)
-	return re.ReplaceAllString(sel, "")
+	return selectionTrimPattern.ReplaceAllString(sel, "")
 }
 
 func selectedVideo(selection string, entries []*ytdlp.Video) (int, int, *ytdlp.Video) {

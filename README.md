@@ -17,11 +17,16 @@ System commands the app expects to be present:
 
 - yt-dlp
 - fzf
-- jq
 - curl
 - mpv or vlc (at least one is required)
 
 The app checks for these commands on startup and will exit with an error if required dependencies are missing.
+Optional preview renderers (used only when previews are enabled and the renderer is selected/detected):
+
+- ueberzugpp (recommended for inline image previews in most terminals)
+- kitty + kitten/icat (for kitty image protocol)
+- imgcat (for iTerm2)
+- chafa (fallback text/image renderer)
 
 ## Build / install
 
@@ -102,6 +107,29 @@ Environment variables that affect behavior:
 - YT_X_APP_NAME — override the CLI name (used for config directory naming)
 - YT_X_FZF_OPTS — override FZF default options used by the app
 - KITTY_WINDOW_ID — if set, the app may choose `icat` for IMAGE_RENDERER
+- ITERM_SESSION_ID — if set, the app may choose `imgcat` for IMAGE_RENDERER
+
+### Preview renderers (auto-detection)
+
+If `IMAGE_RENDERER` is empty, `auto`, or `detect`, the app selects a renderer in this order:
+
+1. kitty image protocol (`icat`) if kitty is detected and `kitten`/`icat`/`kitty` exists
+2. iTerm2 `imgcat` if iTerm is detected
+3. `ueberzugpp` if available
+4. `chafa` as fallback
+
+If `IMAGE_RENDERER` is explicitly set to `ueberzugpp`, the same auto-detection will still prefer kitty or iTerm when those are detected. To force ueberzugpp, unset kitty and iTerm detection variables and ensure `ueberzugpp` is on PATH.
+
+### ueberzugpp previews
+
+When `IMAGE_RENDERER=ueberzugpp` and previews are enabled, the app manages a single background `ueberzugpp layer` process and shares a FIFO with fzf preview calls. This avoids repeated spawns and keeps previews responsive. The helper script:
+
+- Clears old images before drawing new ones
+- Computes position from `FZF_PREVIEW_LEFT` and `FZF_PREVIEW_TOP`
+- Sizes using `FZF_PREVIEW_COLUMNS` and `FZF_PREVIEW_LINES`
+- Sends JSON commands to ueberzugpp (`action:add`/`action:remove`)
+
+For debugging layout, set `YT_X_DEBUG=1` to log sizing details to `/tmp/yt-browser-ueberzugpp-debug.log`.
 
 ## Examples
 
@@ -130,10 +158,12 @@ or run package-specific tests:
 ## Troubleshooting
 
 - Missing dependencies error on startup:
-  The app checks for yt-dlp, fzf, jq, curl and mpv OR vlc. Install missing packages via your package manager (apt, brew, pacman, etc) or otherwise ensure the binaries are in PATH.
+  The app checks for yt-dlp, fzf, curl and mpv OR vlc. Install missing packages via your package manager (apt, brew, pacman, etc) or otherwise ensure the binaries are in PATH.
 
 - Preview images not shown:
   Ensure IMAGE_RENDERER in config is set appropriately (e.g., `chafa` for terminal image rendering or `icat` if using kitty), and that preview feature is enabled in config (`ENABLE_PREVIEW=true`) and selector is `fzf`.
+- ueberzugpp preview shows nothing:
+  Confirm `ueberzugpp` is installed, `IMAGE_RENDERER=ueberzugpp`, and `ENABLE_PREVIEW=true`. If you are running inside kitty or iTerm2, auto-detection may choose `icat` or `imgcat` instead.
 
 ## Contributing
 

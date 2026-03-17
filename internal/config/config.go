@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"yt/internal/util"
 )
 
 type Paths struct {
@@ -115,12 +116,29 @@ func Load(cliName, cliVersion string) (*State, error) {
 		return nil, err
 	}
 
-	if st.Config["IMAGE_RENDERER"] == "" {
-		if os.Getenv("KITTY_WINDOW_ID") != "" {
-			st.Config["IMAGE_RENDERER"] = "icat"
-		} else {
-			st.Config["IMAGE_RENDERER"] = "chafa"
+	renderer := strings.ToLower(strings.TrimSpace(st.Config["IMAGE_RENDERER"]))
+	if renderer == "auto" || renderer == "detect" || renderer == "" {
+		renderer = ""
+	}
+	if renderer == "" || renderer == "ueberzugpp" {
+		term := strings.ToLower(os.Getenv("TERM"))
+		hasKitty := os.Getenv("KITTY_WINDOW_ID") != "" || strings.Contains(term, "kitty")
+		canKitty := util.CommandExists("kitten") || util.CommandExists("icat") || util.CommandExists("kitty")
+		hasIterm := os.Getenv("ITERM_SESSION_ID") != ""
+		canImgcat := util.CommandExists("imgcat")
+		switch {
+		case hasKitty && canKitty:
+			renderer = "icat"
+		case hasIterm && canImgcat:
+			renderer = "imgcat"
+		case util.CommandExists("ueberzugpp"):
+			renderer = "ueberzugpp"
+		case util.CommandExists("chafa"):
+			renderer = "chafa"
 		}
+	}
+	if renderer != "" {
+		st.Config["IMAGE_RENDERER"] = renderer
 	}
 
 	if pb := strings.TrimSpace(st.Config["PREFERRED_BROWSER"]); pb != "" && !strings.Contains(pb, "--cookies-from-browser") {

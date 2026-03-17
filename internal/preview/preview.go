@@ -27,6 +27,25 @@ generate_sha256() {
   else echo -n "$input" | base64 | tr '/+' '_-' | tr -d '\n'; fi
 }
 
+fzf_image_clear() {
+  if [ "$IMAGE_RENDERER" = "ueberzugpp" ] && [ -n "$UEBERZUGPP_FIFO" ] && [ -p "$UEBERZUGPP_FIFO" ]; then
+    if [ -z "$UEBERZUGPP_FD" ]; then
+      exec 3> "$UEBERZUGPP_FIFO"
+      UEBERZUGPP_FD=3
+      export UEBERZUGPP_FD
+    fi
+    printf '{"action":"remove","identifier":"ytbpreview"}\n' >&${UEBERZUGPP_FD} 2>/dev/null
+  elif [ "$IMAGE_RENDERER" = "icat" ] || [ -n "$KITTY_WINDOW_ID" ]; then
+    if command -v kitten >/dev/null 2>&1; then
+      kitten icat --clear --stdin=no >/dev/null 2>&1
+    elif command -v icat >/dev/null 2>&1; then
+      icat --clear --stdin=no >/dev/null 2>&1
+    elif command -v kitty >/dev/null 2>&1; then
+      kitty icat --clear --stdin=no >/dev/null 2>&1
+    fi
+  fi
+}
+
 fzf_preview() {
   file=$1
   dim=${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}
@@ -36,7 +55,130 @@ fzf_preview() {
      dim=${FZF_PREVIEW_COLUMNS}x$((FZF_PREVIEW_LINES - 1))
   fi
 
-  if [ "$IMAGE_RENDERER" = "icat" ] || [ -n "$KITTY_WINDOW_ID" ]; then
+  ueberzugpp_cleanup() {
+    if [ -n "$UEBERZUGPP_FD" ]; then
+      printf '{"action":"remove","identifier":"ytbpreview"}\n' >&${UEBERZUGPP_FD} 2>/dev/null
+      eval "exec ${UEBERZUGPP_FD}>&-" 2>/dev/null
+    fi
+    if [ "$UEBERZUGPP_MANAGED" = "1" ]; then
+      unset UEBERZUGPP_FD
+      return 0
+    fi
+    if [ -n "$UEBERZUGPP_PID" ]; then
+      kill "$UEBERZUGPP_PID" 2>/dev/null
+    fi
+    if [ -n "$UEBERZUGPP_FIFO" ]; then
+      rm -f "$UEBERZUGPP_FIFO" 2>/dev/null
+    fi
+    unset UEBERZUGPP_FIFO UEBERZUGPP_PID UEBERZUGPP_FD
+  }
+
+  ueberzugpp_init() {
+    if [ -n "$UEBERZUGPP_FIFO" ] && [ -p "$UEBERZUGPP_FIFO" ] && [ -n "$UEBERZUGPP_PID" ]; then
+      if kill -0 "$UEBERZUGPP_PID" 2>/dev/null; then
+        if [ -z "$UEBERZUGPP_FD" ]; then
+          exec 3> "$UEBERZUGPP_FIFO"
+          UEBERZUGPP_FD=3
+          export UEBERZUGPP_FD
+        fi
+        return 0
+      fi
+    fi
+
+    ueberzugpp_cleanup >/dev/null 2>&1 || true
+
+    local tmpdir="${TMPDIR:-/tmp}"
+    local reqdir="${XDG_RUNTIME_DIR:-$tmpdir}"
+    local runtime_dir=""
+
+    if [ -d "$reqdir" ] && [ -w "$reqdir" ]; then
+      runtime_dir="$reqdir"
+    else
+      runtime_dir="$tmpdir"
+    fi
+
+    UEBERZUGPP_FIFO="$(mktemp -u "$runtime_dir/ytb-ueberzugpp-XXXXXX")"
+    mkfifo "$UEBERZUGPP_FIFO"
+    ueberzugpp layer --silent < "$UEBERZUGPP_FIFO" >/dev/null 2>&1 &
+    UEBERZUGPP_PID=$!
+    exec 3> "$UEBERZUGPP_FIFO"
+    UEBERZUGPP_FD=3
+    export UEBERZUGPP_FIFO UEBERZUGPP_PID UEBERZUGPP_FD
+    if [ -z "$UEBERZUGPP_TRAP_SET" ]; then
+      trap 'ueberzugpp_cleanup' EXIT HUP INT QUIT TERM
+      UEBERZUGPP_TRAP_SET=1
+      export UEBERZUGPP_TRAP_SET
+    fi
+  }
+
+  ueberzugpp_preview() {
+    local img="$1"
+    local debug_log="${TMPDIR:-/tmp}/yt-browser-ueberzugpp-debug.log"
+    if ! [ -f "$img" ]; then
+      echo "Image: $(basename "$img")"
+      return 0
+    fi
+
+    ueberzugpp_init || return 0
+
+    local preview_cols="${FZF_PREVIEW_COLUMNS}"
+    local preview_lines="${FZF_PREVIEW_LINES}"
+    local preview_left="${FZF_PREVIEW_LEFT:-0}"
+    local preview_top="${FZF_PREVIEW_TOP:-0}"
+
+    if [ -z "$preview_cols" ] || [ "$preview_cols" -le 0 ]; then
+      preview_cols=$(tput cols)
+    fi
+    if [ -z "$preview_lines" ] || [ "$preview_lines" -le 0 ]; then
+      preview_lines=$(tput lines)
+    fi
+
+    local x=$((preview_left + 1))
+    local y=$((preview_top + 1))
+    local max_width=$((preview_cols - 2))
+    local text_reserved=8
+    local max_height=$((preview_lines / 2))
+
+    if [ $max_height -gt $((preview_lines - text_reserved)) ]; then
+      max_height=$((preview_lines - text_reserved))
+    fi
+    if [ $max_height -lt 4 ]; then
+      max_height=4
+    fi
+    if [ $max_height -gt $((preview_lines - 2)) ]; then
+      max_height=$((preview_lines - 2))
+    fi
+    if [ $max_width -lt 1 ]; then
+      max_width=1
+    fi
+    if [ $max_height -lt 1 ]; then
+      max_height=1
+    fi
+
+    if [ -n "$YT_X_DEBUG" ]; then
+      (
+        echo "time=$(date -Iseconds)"
+        echo "img=$img"
+        echo "cols=$preview_cols lines=$preview_lines left=$preview_left top=$preview_top"
+        echo "x=$x y=$y max_w=$max_width max_h=$max_height"
+        echo "term=$TERM tty=$(tty 2>/dev/null)"
+        echo "fifo=$UEBERZUGPP_FIFO pid=$UEBERZUGPP_PID"
+      ) >> "$debug_log"
+    fi
+
+    printf '{"action":"add","identifier":"ytbpreview","x":%s,"y":%s,"max_width":%s,"max_height":%s,"path":"%s"}\n' \
+      "$x" "$y" "$max_width" "$max_height" "$img" >&${UEBERZUGPP_FD} 2>/dev/null
+
+    local i=0
+    while [ $i -lt $max_height ]; do
+      echo
+      i=$((i + 1))
+    done
+  }
+
+  if [ "$IMAGE_RENDERER" = "ueberzugpp" ] && command -v ueberzugpp >/dev/null 2>&1; then
+    ueberzugpp_preview "$file"
+  elif [ "$IMAGE_RENDERER" = "icat" ] || [ -n "$KITTY_WINDOW_ID" ]; then
     if command -v kitten >/dev/null 2>&1; then
       kitten icat --clear --transfer-mode=memory --unicode-placeholder --stdin=no --place="$dim@0x0" "$file" | sed "\$d" | sed "$(printf "\$s/\$/\033[m/")"
     elif command -v icat >/dev/null 2>&1; then
@@ -45,7 +187,7 @@ fzf_preview() {
       kitty icat --clear --transfer-mode=memory --unicode-placeholder --stdin=no --place="$dim@0x0" "$file" | sed "\$d" | sed "$(printf "\$s/\$/\033[m/")"
     fi
   elif command -v chafa >/dev/null 2>&1; then
-    chafa -s "$dim" "$file"; echo
+    chafa -f kitty -s "$dim" "$file"; echo
   elif command -v imgcat >/dev/null; then
     imgcat -W "${dim%%x*}" -H "${dim##*x}" "$file"
   else
@@ -53,6 +195,7 @@ fzf_preview() {
   fi
 }
 export -f generate_sha256
+export -f fzf_image_clear
 export -f fzf_preview
 `
 	helperContent := strings.NewReplacer(
@@ -76,7 +219,9 @@ if [ "$MODE" = "video" ]; then
   if [ -f "__SCRIPT_CACHE__"/${id}.txt ]; then
     . "__SCRIPT_CACHE__"/${id}.txt
   else
-    echo "Loading Preview..."
+    fzf_image_clear 2>/dev/null
+    echo "Loading Preview Information..."
+    echo "Title: $clean_title"
   fi
 fi
 `
@@ -128,7 +273,10 @@ func GenerateTextPreview(data *ytdlp.Result, paths config.Paths, currentTime int
 		if len(video.Thumbnails) > 0 {
 			thumbURL = video.Thumbnails[len(video.Thumbnails)-1].URL
 		}
-		previewImageHash := util.SHA256(thumbURL)
+		previewImageHash := ""
+		if strings.TrimSpace(thumbURL) != "" {
+			previewImageHash = util.SHA256(thumbURL)
+		}
 		viewCount := humanViewCount(video.ViewCount)
 		liveStatus := humanLiveStatus(video.LiveStatus)
 		duration := humanDuration(video.Duration)
@@ -139,26 +287,32 @@ func GenerateTextPreview(data *ytdlp.Result, paths config.Paths, currentTime int
 		}
 
 		content := fmt.Sprintf(`
-if [ -f %q/%s.jpg ];then fzf_preview %q/%s.jpg 2>/dev/null;
-else echo loading preview image...;
+if [ -n %q ] && [ -f %q/%s.jpg ]; then
+  fzf_preview %q/%s.jpg 2>/dev/null;
+elif [ -n %q ]; then
+  fzf_image_clear 2>/dev/null;
+  echo "Image loading...";
+else
+  fzf_image_clear 2>/dev/null;
+  echo "No preview image";
 fi
 ll=1
 while [ $ll -le $FZF_PREVIEW_COLUMNS ];do echo -n -e "─" ;(( ll++ ));done;
 echo
-echo %s
+printf "Title: %%s\n" %s
 ll=1
 while [ $ll -le $FZF_PREVIEW_COLUMNS ];do echo -n -e "─" ;(( ll++ ));done;
-echo "Channel: %s"
+printf "Channel: %%s\n" %s
 echo "Duration: %s"
-echo "View Count: %s views"
-echo "Live Status: %s"
+echo "Views:    %s"
+echo "Live:     %s"
 echo "Uploaded: %s"
 ll=1
 while [ $ll -le $FZF_PREVIEW_COLUMNS ];do echo -n -e "─" ;(( ll++ ));done;
 echo
-! [ %s = "null" ] && echo -n %s;
-`, paths.PreviewImagesCacheDir, previewImageHash, paths.PreviewImagesCacheDir, previewImageHash,
-			shellQuote(cleanTitle), shellQuote(video.Channel), duration, viewCount, liveStatus, uploaded,
+if [ %s != "null" ]; then printf "%%s" %s; fi
+`, previewImageHash, paths.PreviewImagesCacheDir, previewImageHash, paths.PreviewImagesCacheDir, previewImageHash,
+			previewImageHash, shellQuote(cleanTitle), shellQuote(video.Channel), duration, viewCount, liveStatus, uploaded,
 			shellQuote(desc), shellQuote(desc))
 
 		if err := os.WriteFile(filepath.Join(paths.PreviewScriptsDir, filenameHash+".txt"), []byte(content), 0o644); err != nil {
@@ -168,7 +322,7 @@ echo
 	return nil
 }
 
-func DownloadPreviewImages(data *ytdlp.Result, paths config.Paths, prefix string) error {
+func DownloadPreviewImages(data *ytdlp.Result, paths config.Paths) error {
 	if data == nil {
 		return nil
 	}
@@ -179,12 +333,15 @@ func DownloadPreviewImages(data *ytdlp.Result, paths config.Paths, prefix string
 	previewsFile := filepath.Join(paths.PreviewImagesCacheDir, "previews.txt")
 	_ = os.Remove(previewsFile)
 
-	entries := make([][2]string, 0)
+	entries := make([][2]string, 0, len(data.Entries))
 	for _, video := range data.Entries {
 		if video == nil || len(video.Thumbnails) == 0 {
 			continue
 		}
 		url := video.Thumbnails[len(video.Thumbnails)-1].URL
+		if strings.TrimSpace(url) == "" {
+			continue
+		}
 		filename := util.SHA256(url)
 		if _, err := os.Stat(filepath.Join(paths.PreviewImagesCacheDir, filename+".jpg")); err == nil {
 			continue
@@ -200,7 +357,7 @@ func DownloadPreviewImages(data *ytdlp.Result, paths config.Paths, prefix string
 		return err
 	}
 	for _, e := range entries {
-		if _, err := fmt.Fprintf(f, "url = \"%s%s\"\n", prefix, e[0]); err != nil {
+		if _, err := fmt.Fprintf(f, "url = \"%s\"\n", e[0]); err != nil {
 			_ = f.Close()
 			return err
 		}
