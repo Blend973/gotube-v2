@@ -1,5 +1,7 @@
 # gotube (gotube-v2)
 
+[![GitHub release](https://img.shields.io/github/v/release/Blend973/gotube-v2)](https://github.com/Blend973/gotube-v2/releases/latest)
+
 gotube is a terminal-first YouTube search / playback / download utility written in Go. It uses yt-dlp to fetch video and playlist metadata, fzf for interactive selection and optional previews, and external players (mpv or vlc) for playback. It includes convenience features for downloading video/audio, search history, and preview image generation.
 
 ## Highlights / features
@@ -28,9 +30,24 @@ Optional preview renderers (used only when previews are enabled and the renderer
 - imgcat (for iTerm2)
 - chafa (fallback text/image renderer)
 
+## Downloads
+
+Pre-built binaries are available on the [Releases](https://github.com/Blend973/gotube-v2/releases) page:
+
+- `gotube-linux-amd64` — Linux x86_64
+- `gotube-darwin-amd64` — macOS Intel
+- `gotube-darwin-arm64` — macOS Apple Silicon
+
+After downloading, make it executable and move it to your PATH:
+
+```sh
+chmod +x gotube-linux-amd64
+sudo mv gotube-linux-amd64 /usr/local/bin/yt
+```
+
 ## Build / install
 
-You can build the CLI with Go:
+Alternatively, you can build the CLI with Go:
 
 - With Go installed:
 
@@ -92,6 +109,10 @@ Default configuration keys and their default values (as discovered in code):
 - DOWNLOAD_DIRECTORY: `$XDG_VIDEOS_DIR/gotube` (defaults to `~/Videos/gotube`)  
 - AUDIO_ONLY_MODE: `false`  
 - AUTOPLAY_MODE: `off`
+- BUFFER_SECS: `120`
+- NETWORK_TIMEOUT: `10`
+- STREAM_BUFFER_SIZE: `64`
+- HARDWARE_DECODING: `auto`
 
 The config loader will create required directories (config dir, cache dirs) when first run. The app also generates helper scripts for previews (helper script and preview dispatcher) in the config directory.
 
