@@ -13,7 +13,7 @@ import (
 	"yt/internal/util"
 )
 
-const cliVersion = "0.8.1"
+const cliVersion = "0.1.0"
 
 func main() {
 	cliName := os.Getenv("YT_X_APP_NAME")

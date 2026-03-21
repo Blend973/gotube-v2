@@ -196,6 +196,9 @@ func (a *App) playlistExplorer(searchResults *ytdlp.Result, searchURL string) er
 		selection := ui.Launcher(options, "select video", p)
 		selection = normalizeSelection(selection)
 		util.ClearScreen()
+		if enablePreview {
+			preview.ClearPreviewImage(a.State.Config)
+		}
 
 		switch selection {
 		case "Next":
@@ -277,7 +280,17 @@ func (a *App) playlistExplorer(searchResults *ytdlp.Result, searchURL string) er
 			if actionSel == "Play" {
 				for {
 					fmt.Printf("Now playing: %s\n", cleanTitle)
-					cmd := player.BuildCommand(a.State.Config["PLAYER"], videoURL, cleanTitle, audioOnlyMode, a.State.Config["VIDEO_QUALITY"])
+					cmd := player.BuildCommand(player.PlayerOpts{
+						Player:        a.State.Config["PLAYER"],
+						VideoURL:      videoURL,
+						CleanTitle:    cleanTitle,
+						AudioOnly:     audioOnlyMode,
+						VideoQuality:  a.State.Config["VIDEO_QUALITY"],
+						BufferSecs:    a.State.Config["BUFFER_SECS"],
+						NetTimeout:    a.State.Config["NETWORK_TIMEOUT"],
+						StreamBufSize: a.State.Config["STREAM_BUFFER_SIZE"],
+						HWDecoding:    a.State.Config["HARDWARE_DECODING"],
+					})
 					a.playerRunning.Store(true)
 					code, err := player.Run(cmd)
 					a.playerRunning.Store(false)

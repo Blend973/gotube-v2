@@ -7,7 +7,17 @@ import (
 )
 
 func TestBuildCommandMPVQuality(t *testing.T) {
-	cmd := BuildCommand("mpv", "http://x", "title", false, "720")
+	cmd := BuildCommand(PlayerOpts{
+		Player:        "mpv",
+		VideoURL:      "http://x",
+		CleanTitle:    "title",
+		AudioOnly:     false,
+		VideoQuality:  "720",
+		BufferSecs:    "120",
+		NetTimeout:    "10",
+		StreamBufSize: "64",
+		HWDecoding:    "no",
+	})
 	if len(cmd) < 3 {
 		t.Fatalf("unexpected command: %#v", cmd)
 	}
@@ -17,9 +27,99 @@ func TestBuildCommandMPVQuality(t *testing.T) {
 }
 
 func TestBuildCommandAudioOnly(t *testing.T) {
-	cmd := BuildCommand("mpv", "http://x", "title", true, "720")
-	if len(cmd) < 4 || cmd[2] != "--no-video" || cmd[3] != "--force-window=no" {
+	cmd := BuildCommand(PlayerOpts{
+		Player:        "mpv",
+		VideoURL:      "http://x",
+		CleanTitle:    "title",
+		AudioOnly:     true,
+		VideoQuality:  "720",
+		BufferSecs:    "120",
+		NetTimeout:    "10",
+		StreamBufSize: "64",
+		HWDecoding:    "no",
+	})
+	hasNoVideo := false
+	hasForceWindow := false
+	for _, arg := range cmd {
+		if arg == "--no-video" {
+			hasNoVideo = true
+		}
+		if arg == "--force-window=no" {
+			hasForceWindow = true
+		}
+	}
+	if !hasNoVideo || !hasForceWindow {
 		t.Fatalf("unexpected command: %#v", cmd)
+	}
+}
+
+func TestBuildCommandCachingFlags(t *testing.T) {
+	cmd := BuildCommand(PlayerOpts{
+		Player:        "mpv",
+		VideoURL:      "http://x",
+		CleanTitle:    "title",
+		BufferSecs:    "90",
+		NetTimeout:    "15",
+		StreamBufSize: "32",
+		HWDecoding:    "no",
+	})
+	expected := map[string]bool{
+		"--cache=yes":                  false,
+		"--cache-secs=90":              false,
+		"--demuxer-readahead-secs=60":  false,
+		"--demuxer-seekable-cache=yes": false,
+		"--stream-buffer-size=32MiB":   false,
+		"--network-timeout=15":         false,
+		"--audio-buffer=2":             false,
+	}
+	for _, arg := range cmd {
+		if _, ok := expected[arg]; ok {
+			expected[arg] = true
+		}
+	}
+	for flag, found := range expected {
+		if !found {
+			t.Errorf("missing flag: %s", flag)
+		}
+	}
+}
+
+func TestBuildCommandHWDecExplicit(t *testing.T) {
+	cmd := BuildCommand(PlayerOpts{
+		Player:     "mpv",
+		VideoURL:   "http://x",
+		CleanTitle: "title",
+		HWDecoding: "vaapi",
+	})
+	hasHWDec := false
+	for _, arg := range cmd {
+		if arg == "--hwdec=vaapi" {
+			hasHWDec = true
+		}
+	}
+	if !hasHWDec {
+		t.Errorf("expected --hwdec=vaapi in command: %#v", cmd)
+	}
+}
+
+func TestBuildCommandHWDecNo(t *testing.T) {
+	cmd := BuildCommand(PlayerOpts{
+		Player:     "mpv",
+		VideoURL:   "http://x",
+		CleanTitle: "title",
+		HWDecoding: "no",
+	})
+	hasThreads := false
+	for _, arg := range cmd {
+		if arg == "--vd-lavc-threads=0" {
+			hasThreads = true
+		}
+		if arg == "--hwdec=no" {
+			t.Errorf("should not pass --hwdec=no explicitly")
+		}
+	}
+	if !hasThreads {
+		t.Errorf("expected --vd-lavc-threads=0 when hwdec=no: %#v", cmd)
 	}
 }
 

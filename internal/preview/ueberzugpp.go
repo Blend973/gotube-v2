@@ -98,6 +98,22 @@ func StopUeberzugppDaemon() {
 	stopUeberzugppLocked()
 }
 
+func ClearPreviewImage(cfg map[string]string) {
+	if cfg == nil {
+		return
+	}
+	if !strings.EqualFold(cfg["ENABLE_PREVIEW"], "true") {
+		return
+	}
+	renderer := strings.ToLower(strings.TrimSpace(cfg["IMAGE_RENDERER"]))
+	switch renderer {
+	case "ueberzugpp":
+		clearUeberzugppImage()
+	case "icat":
+		clearKittyImage()
+	}
+}
+
 func stopUeberzugppLocked() {
 	if daemonState == nil {
 		return
@@ -142,6 +158,37 @@ func shouldUseUeberzugpp(cfg map[string]string) bool {
 		return false
 	}
 	return util.CommandExists("ueberzugpp")
+}
+
+func clearUeberzugppImage() {
+	fifo := os.Getenv("UEBERZUGPP_FIFO")
+	if fifo == "" {
+		return
+	}
+	info, err := os.Stat(fifo)
+	if err != nil || (info.Mode()&os.ModeNamedPipe) == 0 {
+		return
+	}
+	f, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return
+	}
+	_, _ = f.WriteString("{\"action\":\"remove\",\"identifier\":\"ytbpreview\"}\n")
+	_ = f.Close()
+}
+
+func clearKittyImage() {
+	if util.CommandExists("kitten") {
+		_ = exec.Command("kitten", "icat", "--clear", "--stdin=no").Run()
+		return
+	}
+	if util.CommandExists("icat") {
+		_ = exec.Command("icat", "--clear", "--stdin=no").Run()
+		return
+	}
+	if util.CommandExists("kitty") {
+		_ = exec.Command("kitty", "icat", "--clear", "--stdin=no").Run()
+	}
 }
 
 func processAlive(p *os.Process) bool {
