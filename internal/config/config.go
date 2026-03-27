@@ -85,10 +85,6 @@ func DefaultConfig(cliName string, paths Paths) map[string]string {
 		"DOWNLOAD_DIRECTORY":    filepath.Join(paths.XDGVideosDir, cliName),
 		"AUDIO_ONLY_MODE":       "false",
 		"AUTOPLAY_MODE":         "off",
-		"BUFFER_SECS":           "120",
-		"NETWORK_TIMEOUT":       "10",
-		"STREAM_BUFFER_SIZE":    "64",
-		"HARDWARE_DECODING":     "auto",
 	}
 }
 

@@ -109,10 +109,6 @@ Default configuration keys and their default values (as discovered in code):
 - DOWNLOAD_DIRECTORY: `$XDG_VIDEOS_DIR/gotube` (defaults to `~/Videos/gotube`)  
 - AUDIO_ONLY_MODE: `false`  
 - AUTOPLAY_MODE: `off`
-- BUFFER_SECS: `120`
-- NETWORK_TIMEOUT: `10`
-- STREAM_BUFFER_SIZE: `64`
-- HARDWARE_DECODING: `auto`
 
 The config loader will create required directories (config dir, cache dirs) when first run. The app also generates helper scripts for previews (helper script and preview dispatcher) in the config directory.
 
